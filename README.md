@@ -222,10 +222,6 @@ M-x sysml-validate-buffer
 2. Force font-lock refresh: `M-x font-lock-fontify-buffer`
 3. Check that the file has `.sysml` extension
 
-## License
-
-Copyright (C) 2025 DeciSym, LLC
-
 <!--  LocalWords:  v2 ElDoc minibuffer sysml elisp setq DataValue OMG
 <!--  LocalWords:  Booleans supertype lookups ispell flyspell chmod
 <!--  LocalWords:  fontify
