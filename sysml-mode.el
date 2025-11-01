@@ -159,6 +159,9 @@ If nil, auto-detect from buffer's directory."
       ("\\<\\(part\\|attribute\\|ref\\|port\\)\\s-+\\([a-z][A-Za-z0-9_]*\\)\\s-*:"
        (2 font-lock-variable-name-face))
 
+      ;; Single-quoted identifiers (SysML v2 quoted names)
+      ("'[^']*'" . font-lock-constant-face)
+
       ;; String literals
       ("\"[^\"]*\"" . font-lock-string-face)
 
@@ -180,8 +183,9 @@ If nil, auto-detect from buffer's directory."
     (modify-syntax-entry ?* ". 23" st)
     (modify-syntax-entry ?\n "> b" st)
 
-    ;; Strings
+    ;; Strings (both double and single quotes)
     (modify-syntax-entry ?\" "\"" st)
+    (modify-syntax-entry ?' "\"" st)
 
     ;; Operators
     (modify-syntax-entry ?: "." st)
