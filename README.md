@@ -48,6 +48,34 @@ enable:
 M-x sysml-mode
 ```
 
+## Installation
+
+### Manual Installation
+
+1. Download `sysml-mode.el` to your Emacs configuration directory
+2. Add to your init.el or .emacs:
+
+```elisp
+;; Add the directory containing sysml-mode.el to load-path
+(add-to-list 'load-path "~/.emacs.d/lisp/")
+;; Load the mode
+(require 'sysml-mode)
+```
+
+### Using use-package
+
+```elisp
+(use-package sysml-mode
+  :load-path "~/.emacs.d/lisp/"
+  :mode ("\\.sysml\\'" "\\.sysmli\\'")
+  :custom
+  (sysml-validate-on-save t)
+  (sysml-enable-prettify-symbols t)
+  :config
+  ;; Optional: Enable which-function-mode for current definition display
+  (add-hook 'sysml-mode-hook 'which-function-mode))
+```
+
 ## Configuration
 
 ### Enable Validation on Save
@@ -322,9 +350,7 @@ M-x sysml-validate-buffer
 
 ## Compatibility
 
-- Emacs 24.3 or later
 - Based on OMG SysML v2 specification (https://www.omg.org/spec/SysML/2.0/)
-- Compatible with SysML v2 Pilot Implementation validator
 
 ## Troubleshooting
 
@@ -335,15 +361,18 @@ M-x sysml-validate-buffer
 3. Set `sysml-validator-script` explicitly if auto-detection fails
 4. Check the `*Messages*` buffer for error messages
 
-### Syntax highlighting issues
+### Performance issues
 
-1. Reload the mode: `M-x revert-buffer`
-2. Force font-lock refresh: `M-x font-lock-fontify-buffer`
-3. Check that the file has `.sysml` extension
+If the mode is slow to load:
+1. Disable prettify-symbols: `(setq sysml-enable-prettify-symbols nil)`
+2. Disable hideshow mode: Remove `hs-minor-mode` from hooks
+3. Check for conflicting modes or packages
 
-<!--  LocalWords:  v2 ElDoc minibuffer sysml elisp setq DataValue OMG
-<!--  LocalWords:  Booleans supertype lookups ispell flyspell chmod
-<!--  LocalWords:  fontify
- -->
- -->
- -->
+## Known Limitations
+
+1. **Validation Script Required**: Syntax validation requires external
+   `validate-sysml.sh` script (not included).
+
+<!-- LocalWords: v2 ElDoc minibuffer sysml elisp setq DataValue OMG -->
+<!-- LocalWords: Booleans supertype lookups ispell flyspell chmod -->
+<!-- LocalWords: fontify -->
