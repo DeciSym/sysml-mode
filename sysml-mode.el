@@ -30,6 +30,8 @@
 
 ;;; Code:
 
+(require 'cl-lib)
+
 ;; Autoload for better performance - load only when needed
 (autoload 'electric-pair-local-mode "elec-pair" nil t)
 (autoload 'hs-minor-mode "hideshow" nil t)
@@ -248,9 +250,9 @@ If nil, auto-detect from buffer's directory."
 
 ;; Indentation
 (defun sysml-indent-line ()
-  "Indent current line as SysML code with better handling of special constructs.
-Properly handles brace-based indentation for SysML blocks, attribute declarations,
-and continuation lines."
+  "Indent current line as SysML code.
+Handles brace-based indentation, attribute declarations, and
+continuation lines."
   (interactive)
   (let ((indent-level 0)
         (pos (- (point-max) (point))))
@@ -1054,21 +1056,23 @@ otherwise returns the base name of the current file."
 (defvar sysml-mode-initialized nil
   "Whether heavy features have been initialized for this mode.")
 
-(defun sysml-mode-lazy-init ()
-  "Lazy initialization of heavy features on first use.
-This function is called on the first idle time after entering the mode,
-improving startup performance."
-  (unless sysml-mode-initialized
-    ;; Load hideshow if available and enable it
-    (when (and (fboundp 'hs-minor-mode)
-               (not hs-minor-mode))
-      (hs-minor-mode 1))
-    ;; Setup prettify symbols if enabled
-    (when (and sysml-enable-prettify-symbols
-               (fboundp 'prettify-symbols-mode))
-      (setq-local prettify-symbols-alist sysml-prettify-symbols-alist)
-      (prettify-symbols-mode 1))
-    (setq-local sysml-mode-initialized t)))
+(defun sysml-mode-lazy-init (buffer)
+  "Lazily initialize heavy features for BUFFER on the next idle time.
+BUFFER must be a live SysML buffer."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      (when (and (derived-mode-p 'sysml-mode)
+                 (not sysml-mode-initialized))
+        ;; Load hideshow if available and enable it.
+        (when (and (fboundp 'hs-minor-mode)
+                   (not (bound-and-true-p hs-minor-mode)))
+          (hs-minor-mode 1))
+        ;; Setup prettify symbols if enabled.
+        (when (and sysml-enable-prettify-symbols
+                   (fboundp 'prettify-symbols-mode))
+          (setq-local prettify-symbols-alist sysml-prettify-symbols-alist)
+          (prettify-symbols-mode 1))
+        (setq-local sysml-mode-initialized t)))))
 
 ;; Mode definition
 ;;;###autoload
@@ -1167,7 +1171,7 @@ brief descriptions in the minibuffer.
                  nil)))  ; no adjust-block-beginning function
 
   ;; Schedule lazy initialization for heavy features
-  (run-with-idle-timer 0.1 nil 'sysml-mode-lazy-init)
+  (run-with-idle-timer 0.1 nil #'sysml-mode-lazy-init (current-buffer))
 
   ;; Spell checking configuration
   ;; flyspell-prog-mode and ispell-comments-and-strings work automatically
