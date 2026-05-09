@@ -1,6 +1,7 @@
 ;;; sysml-mode.el --- Major mode for SysML v2 (Systems Modeling Language)  -*- lexical-binding: t; -*-
 
-;; Author: Donald Anthony Pellegrino Jr., Ph.D.
+;; Author: Donald Anthony Pellegrino Jr., Ph.D. <don@decisym.ai>
+;; Assisted-by: GPT:gpt-5-5
 ;; Keywords: languages, modeling, systems engineering
 ;; Version: 1.1.0
 ;; Package-Requires: ((emacs "25.1"))
