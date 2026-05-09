@@ -21,7 +21,7 @@
 ;; - Comment support (single-line // and multi-line /* */)
 ;; - Documentation blocks (doc /* ... */)
 ;; - Indentation support
-;; - Integration with validate-sysml.sh for on-save validation
+;; - Integration with validate-sysml for on-save validation
 ;;
 ;; Installation:
 ;; Add to your .emacs or init.el:
@@ -43,7 +43,7 @@
   :group 'languages)
 
 (defcustom sysml-validator-script nil
-  "Path to the validate-sysml.sh script.
+  "Path to the validate-sysml script.
 If nil, auto-detect from buffer's directory."
   :type '(choice (const :tag "Auto-detect" nil)
                  (file :tag "Script path"))
@@ -436,7 +436,7 @@ Set to nil to disable prettification."
   "Cached path to the validator script for this buffer.")
 
 (defun sysml-find-validator (&optional force-refresh)
-  "Find the validate-sysml.sh script in the current directory tree or system PATH.
+  "Find the validate-sysml script in the current directory tree or system PATH.
 First checks the custom sysml-validator-script variable, then searches
 the project directory tree, and finally checks the system PATH.
 The result is cached per buffer to improve performance.
@@ -449,10 +449,10 @@ Optional argument FORCE-REFRESH forces a fresh search, ignoring the cache."
                 (when buffer-file-name
                   (let ((script (locate-dominating-file
                                 (file-name-directory buffer-file-name)
-                                "validate-sysml.sh")))
+                                "validate-sysml")))
                     (when script
-                      (expand-file-name "validate-sysml.sh" script))))
-                (executable-find "validate-sysml.sh")))))
+                      (expand-file-name "validate-sysml" script))))
+                (executable-find "validate-sysml")))))
 
 (defun sysml-clear-validator-cache ()
   "Clear the cached validator script location for the current buffer.
@@ -462,7 +462,7 @@ Useful if the validator script has been moved or added."
   (message "Validator cache cleared. Next validation will search for the script."))
 
 (defun sysml-validate-buffer ()
-  "Validate the current SysML buffer using validate-sysml.sh.
+  "Validate the current SysML buffer using validate-sysml.
 The validator can validate either a single file or a directory.
 Prompts to save the buffer if it has unsaved changes."
   (interactive)
@@ -474,7 +474,7 @@ Prompts to save the buffer if it has unsaved changes."
   (let ((validator-script (sysml-find-validator)))
     (cond
      ((not validator-script)
-      (message "SysML validator script not found. Set sysml-validator-script or ensure validate-sysml.sh is in project or PATH."))
+      (message "SysML validator script not found. Set sysml-validator-script or ensure validate-sysml is in project or PATH."))
      ((not (file-exists-p validator-script))
       (error "Validator script does not exist: %s" validator-script))
      ((not (file-executable-p validator-script))
@@ -1088,7 +1088,7 @@ Features:
 - Electric pairs - automatic insertion of matching delimiters
 - Prettify symbols - display operators with Unicode characters
 - Quick reference guide (C-c C-h)
-- File validation with validate-sysml.sh (C-c C-v)
+- File validation with validate-sysml (C-c C-v)
 - Smart spell checking for comments and strings only (C-c C-s)
 - Improved automatic indentation
 

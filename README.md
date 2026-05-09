@@ -34,7 +34,7 @@ syntax highlighting and validation integration.
 
 ### Development Tools
 - **Quick Reference**: `C-c C-h` displays a syntax guide with examples
-- **Validation**: Integration with `validate-sysml.sh` for on-save
+- **Validation**: Integration with `validate-sysml` for on-save
   validation (`C-c C-v`)
 - **Spell Checking**: Smart spell checking for comments and strings only
   (`C-c C-s`)
@@ -86,11 +86,11 @@ M-x sysml-mode
 
 ### Set Validator Script Path
 
-By default, the mode auto-detects `validate-sysml.sh` in the project
+By default, the mode auto-detects `validate-sysml` in the project
 directory tree. To set explicitly:
 
 ```elisp
-(setq sysml-validator-script "/path/to/validate-sysml.sh")
+(setq sysml-validator-script "/path/to/validate-sysml")
 ```
 
 ### Example Configuration
@@ -331,7 +331,7 @@ strings.
 ## Validation Integration
 
 When `sysml-validate-on-save` is enabled, the mode runs
-`validate-sysml.sh` after saving. Validation errors appear in the
+`validate-sysml` after saving. Validation errors appear in the
 `*compilation*` buffer with GNU format:
 
 ```
@@ -356,8 +356,8 @@ M-x sysml-validate-buffer
 
 ### Validation not working
 
-1. Check that `validate-sysml.sh` is in your project directory
-2. Verify the script is executable: `chmod +x validate-sysml.sh`
+1. Check that `validate-sysml` is in your project directory
+2. Verify the script is executable: `chmod +x validate-sysml`
 3. Set `sysml-validator-script` explicitly if auto-detection fails
 4. Check the `*Messages*` buffer for error messages
 
@@ -371,7 +371,7 @@ If the mode is slow to load:
 ## Known Limitations
 
 1. **Validation Script Required**: Syntax validation requires external
-   `validate-sysml.sh` script (not included).
+   `validate-sysml` script (not included).
 
 <!-- LocalWords: v2 ElDoc minibuffer sysml elisp setq DataValue OMG -->
 <!-- LocalWords: Booleans supertype lookups ispell flyspell chmod -->
