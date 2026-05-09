@@ -1,36 +1,22 @@
 ;;; sysml-mode.el --- Major mode for SysML v2 (Systems Modeling Language)  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2025 DeciSym, LLC
 ;; Author: Donald Anthony Pellegrino Jr., Ph.D.
 ;; Keywords: languages, modeling, systems engineering
 ;; Version: 1.1.0
-;; Package-Requires: ((emacs "24.3"))
+;; Package-Requires: ((emacs "25.1"))
 ;; URL: https://github.com/decisym/sysml-mode
 ;; Homepage: https://github.com/decisym/sysml-mode
 
 ;;; Commentary:
 
-;; This package provides a major mode for editing SysML v2 (Systems Modeling Language)
-;; files with syntax highlighting based on the OMG SysML v2 normative specification.
-;;
-;; SysML v2 specification: https://www.omg.org/spec/SysML/2.0/
-;; Normative example: https://www.omg.org/cgi-bin/doc?ptc/25-04-31.sysml
-;;
-;; Features:
-;; - Syntax highlighting for keywords, operators, types
-;; - Comment support (single-line // and multi-line /* */)
-;; - Documentation blocks (doc /* ... */)
-;; - Indentation support
-;; - Integration with validate-sysml for on-save validation
-;;
-;; Installation:
-;; Add to your .emacs or init.el:
-;;   (load-file "/path/to/sysml-mode.el")
-;;   (add-to-list 'auto-mode-alist '("\\.sysml\\'" . sysml-mode))
+;; This package defines `sysml-mode', a major mode for SysML v2
+;; textual notation files.
 
 ;;; Code:
 
 (require 'cl-lib)
+(require 'grep)
+(require 'project nil t)
 
 ;; Autoload for better performance - load only when needed
 (autoload 'electric-pair-local-mode "elec-pair" nil t)
@@ -43,10 +29,10 @@
   :group 'languages)
 
 (defcustom sysml-validator-script nil
-  "Path to the validate-sysml script.
+  "Path to the validate-sysml command.
 If nil, auto-detect from buffer's directory."
   :type '(choice (const :tag "Auto-detect" nil)
-                 (file :tag "Script path"))
+                 (file :tag "Command path"))
   :group 'sysml)
 
 (defcustom sysml-validate-on-save nil
@@ -431,14 +417,14 @@ Set to nil to disable prettification."
 
 ;; Validation integration
 
-;; Buffer-local cache for validator script location
+;; Buffer-local cache for validator command location
 (defvar-local sysml--cached-validator nil
-  "Cached path to the validator script for this buffer.")
+  "Cached path to the validator command for this buffer.")
 
 (defun sysml-find-validator (&optional force-refresh)
-  "Find the validate-sysml script in the current directory tree or system PATH.
-First checks the custom sysml-validator-script variable, then searches
-the project directory tree, and finally checks the system PATH.
+  "Find the validate-sysml command in the current directory tree or system PATH.
+First checks the custom `sysml-validator-script' variable, then
+searches the project directory tree, and finally checks the system PATH.
 The result is cached per buffer to improve performance.
 Optional argument FORCE-REFRESH forces a fresh search, ignoring the cache."
   (when force-refresh
@@ -447,19 +433,19 @@ Optional argument FORCE-REFRESH forces a fresh search, ignoring the cache."
       (setq sysml--cached-validator
             (or sysml-validator-script
                 (when buffer-file-name
-                  (let ((script (locate-dominating-file
-                                (file-name-directory buffer-file-name)
-                                "validate-sysml")))
-                    (when script
-                      (expand-file-name "validate-sysml" script))))
+                  (let ((directory (locate-dominating-file
+                                    (file-name-directory buffer-file-name)
+                                    "validate-sysml")))
+                    (when directory
+                      (expand-file-name "validate-sysml" directory))))
                 (executable-find "validate-sysml")))))
 
 (defun sysml-clear-validator-cache ()
-  "Clear the cached validator script location for the current buffer.
-Useful if the validator script has been moved or added."
+  "Clear the cached validator command location for the current buffer.
+Useful if the validator command has been moved or added."
   (interactive)
   (setq sysml--cached-validator nil)
-  (message "Validator cache cleared. Next validation will search for the script."))
+  (message "Validator cache cleared. Next validation will search for the command."))
 
 (defun sysml-validate-buffer ()
   "Validate the current SysML buffer using validate-sysml.
@@ -471,26 +457,123 @@ Prompts to save the buffer if it has unsaved changes."
   (when (buffer-modified-p)
     (when (y-or-n-p (format "Save %s before validation? " (buffer-name)))
       (save-buffer)))
-  (let ((validator-script (sysml-find-validator)))
+  (let ((validator-command (sysml-find-validator)))
     (cond
-     ((not validator-script)
-      (message "SysML validator script not found. Set sysml-validator-script or ensure validate-sysml is in project or PATH."))
-     ((not (file-exists-p validator-script))
-      (error "Validator script does not exist: %s" validator-script))
-     ((not (file-executable-p validator-script))
-      (error "Validator script is not executable: %s" validator-script))
+     ((not validator-command)
+      (message "SysML validator command not found. Set sysml-validator-script or ensure validate-sysml is in project or PATH."))
+     ((not (file-exists-p validator-command))
+      (error "Validator command does not exist: %s" validator-command))
+     ((not (file-executable-p validator-command))
+      (error "Validator command is not executable: %s" validator-command))
      (t
-      (let ((default-directory (file-name-directory validator-script)))
-        (compile (format "%s %s" validator-script
-                        (shell-quote-argument buffer-file-name))))))))
+      (let ((default-directory (file-name-directory validator-command)))
+        (compile (mapconcat #'shell-quote-argument
+                            (list validator-command buffer-file-name)
+                            " ")))))))
 
 (defun sysml-validate-on-save ()
   "Validate SysML file on save if enabled."
   (when (and sysml-validate-on-save
+             buffer-file-name
              (eq major-mode 'sysml-mode))
     (sysml-validate-buffer)))
 
 ;; Project-wide symbol search
+
+(defconst sysml--project-source-file-regexp "\\.sysml\\'"
+  "Regexp matching SysML source file names.")
+
+(defconst sysml--definition-keywords
+  '("part" "attribute" "item" "port" "action" "state" "requirement"
+    "constraint" "connection" "interface" "allocation" "verification"
+    "calc" "analysis" "concern" "viewpoint" "view" "metadata"
+    "individual" "enum")
+  "SysML declaration keywords that can be followed by `def'.")
+
+(defun sysml--project-root (&optional project)
+  "Return the current project root for PROJECT or `default-directory'."
+  (file-name-as-directory
+   (expand-file-name
+    (or (and project
+             (fboundp 'project-root)
+             (project-root project))
+        default-directory))))
+
+(defun sysml--normalize-project-file (file root)
+  "Return FILE as an absolute path, interpreting relative names under ROOT."
+  (if (file-name-absolute-p file)
+      file
+    (expand-file-name file root)))
+
+(defun sysml--project-source-files ()
+  "Return SysML source files in the current project or directory tree."
+  (let* ((project (and (fboundp 'project-current)
+                       (project-current nil)))
+         (root (sysml--project-root project))
+         (project-files
+          (when (and project (fboundp 'project-files))
+            (condition-case nil
+                (project-files project)
+              (error nil))))
+         (files (or project-files
+                    (directory-files-recursively
+                     root sysml--project-source-file-regexp))))
+    (cl-remove-if-not
+     (lambda (file)
+       (and (string-match-p sysml--project-source-file-regexp file)
+            (file-regular-p file)))
+     (mapcar (lambda (file)
+               (sysml--normalize-project-file file root))
+             files))))
+
+(defun sysml--search-files (regexp)
+  "Return grep-style matches for REGEXP in SysML project files.
+Each result is a list of FILE, LINE, and LINE-TEXT."
+  (let ((matches nil))
+    (dolist (file (sysml--project-source-files))
+      (condition-case nil
+          (with-temp-buffer
+            (insert-file-contents file)
+            (goto-char (point-min))
+            (let ((last-line 0))
+              (while (re-search-forward regexp nil t)
+                (let ((line (line-number-at-pos (match-beginning 0))))
+                  (unless (= line last-line)
+                    (setq last-line line)
+                    (push (list file
+                                line
+                                (buffer-substring-no-properties
+                                 (line-beginning-position)
+                                 (line-end-position)))
+                          matches))))))
+        (file-error nil)))
+    (nreverse matches)))
+
+(defun sysml--display-search-results (title regexp)
+  "Display SysML project search results for TITLE matching REGEXP."
+  (let ((matches (sysml--search-files regexp))
+        (buffer (get-buffer-create "*SysML Search*"))
+        (root (sysml--project-root)))
+    (if (null matches)
+        (message "No SysML matches for %s" title)
+      (with-current-buffer buffer
+        (let ((inhibit-read-only t))
+          (erase-buffer)
+          (setq default-directory root)
+          (dolist (match matches)
+            (pcase-let ((`(,file ,line ,text) match))
+              (insert (format "%s:%d:%s\n" file line text)))))
+        (grep-mode)
+        (setq-local compilation-directory root))
+      (display-buffer buffer))))
+
+(defun sysml--definition-search-regexp (symbol)
+  "Return a regexp that matches a declaration of SYMBOL."
+  (concat "\\_<\\(?:package\\|"
+          (regexp-opt sysml--definition-keywords)
+          "\\s-+def\\)\\s-+"
+          (regexp-quote symbol)
+          "\\_>"))
 
 (defun sysml-find-definition-at-point ()
   "Find the definition of the symbol at point across the project.
@@ -499,12 +582,9 @@ Searches for package, def, or usage declarations of the symbol."
   (let ((symbol (thing-at-point 'symbol t)))
     (unless symbol
       (error "No symbol at point"))
-    (let ((search-pattern (format "\\b(package|def|%s)\\s+%s\\b"
-                                  (regexp-opt '("part" "attribute" "item" "port"
-                                               "action" "state" "requirement" "constraint"))
-                                  (regexp-quote symbol))))
-      (grep-find (format "find . -name '*.sysml' -o -name '*.sysmli' | xargs grep -n -E '%s'"
-                         search-pattern)))))
+    (sysml--display-search-results
+     (format "definitions of %s" symbol)
+     (sysml--definition-search-regexp symbol))))
 
 (defun sysml-find-references ()
   "Find all references to the symbol at point across the project.
@@ -513,16 +593,19 @@ Searches for any usage of the symbol name."
   (let ((symbol (thing-at-point 'symbol t)))
     (unless symbol
       (error "No symbol at point"))
-    (grep-find (format "find . -name '*.sysml' -o -name '*.sysmli' | xargs grep -n -w '%s'"
-                       (regexp-quote symbol)))))
+    (sysml--display-search-results
+     (format "references to %s" symbol)
+     (concat "\\_<" (regexp-quote symbol) "\\_>"))))
 
 (defun sysml-list-definitions ()
   "List all definitions in the current project.
 Shows packages, parts, attributes, and other definition types."
   (interactive)
-  (let ((pattern "^\\s-*(package|.*\\s+def)\\s+\\w+"))
-    (grep-find (format "find . -name '*.sysml' -o -name '*.sysmli' | xargs grep -n -E '%s'"
-                       pattern))))
+  (sysml--display-search-results
+   "definitions"
+   (concat "^\\s-*\\(?:package\\|"
+           (regexp-opt sysml--definition-keywords)
+           "\\s-+def\\)\\s-+[A-Za-z_][A-Za-z0-9_]*\\_>")))
 
 ;; Completion support
 
@@ -633,15 +716,26 @@ Provides completion for SysML keywords and defined symbols."
     ("ref system" . "reference to external system (not composition)"))
   "ElDoc documentation for SysML keywords and operators.")
 
+(defun sysml--operator-at-point ()
+  "Return the SysML operator at point, or nil."
+  (let ((position (point)))
+    (cl-some
+     (lambda (operator)
+       (let ((start (max (point-min) (- position (length operator))))
+             (end (min (point-max) (+ position (length operator)))))
+         (save-excursion
+           (goto-char start)
+           (catch 'found
+             (while (search-forward operator end t)
+               (when (and (<= (match-beginning 0) position)
+                          (<= position (match-end 0)))
+                 (throw 'found operator)))))))
+     '(":>>" ":>" "::"))))
+
 (defun sysml-eldoc-function ()
   "Provide ElDoc documentation for SysML keywords at point."
   (let* ((word (thing-at-point 'symbol t))
-         ;; Also check for operators
-         (operator (save-excursion
-                    (skip-syntax-backward "^w")
-                    (buffer-substring-no-properties
-                     (point)
-                     (min (+ (point) 3) (point-max)))))
+         (operator (sysml--operator-at-point))
          (preceding (save-excursion
                      (ignore-errors
                        (backward-word)
@@ -656,86 +750,9 @@ Provides completion for SysML keywords and defined symbols."
                ;; Try word
                (and word (cdr (assoc word sysml-eldoc-keywords)))
                ;; Try operator
-               (cdr (assoc operator sysml-eldoc-keywords))
-               ;; Try shorter operator
-               (cdr (assoc (substring operator 0 (min 2 (length operator)))
-                          sysml-eldoc-keywords))))
+               (and operator
+                    (cdr (assoc operator sysml-eldoc-keywords)))))
     doc))
-
-(defun sysml-quick-reference ()
-  "Display a quick reference guide for SysML v2 syntax."
-  (interactive)
-  (let ((buf (get-buffer-create "*SysML Quick Reference*")))
-    (with-current-buffer buf
-      (let ((inhibit-read-only t))
-        (erase-buffer)
-        (insert "SysML v2 Quick Reference\n")
-        (insert "========================\n\n")
-
-        (insert "Operators\n")
-        (insert "---------\n")
-        (insert "  :>   - Specialization (inheritance)\n")
-        (insert "       Example: part def Car :> Vehicle\n\n")
-        (insert "  :>>  - Redefinition (override inherited feature)\n")
-        (insert "       Example: attribute :>> name = \"MyName\"\n\n")
-        (insert "  ::   - Qualified name separator\n")
-        (insert "       Example: ScalarValues::String\n\n")
-
-        (insert "Common Patterns\n")
-        (insert "---------------\n")
-        (insert "Package declaration:\n")
-        (insert "  package MyPackage {\n")
-        (insert "    private import ScalarValues::*;\n")
-        (insert "  }\n\n")
-
-        (insert "Part definition:\n")
-        (insert "  part def MyComponent {\n")
-        (insert "    attribute name : String;\n")
-        (insert "    ref system : System[0..1];\n")
-        (insert "  }\n\n")
-
-        (insert "Part usage (instance):\n")
-        (insert "  part myInstance : MyComponent {\n")
-        (insert "    attribute :>> name = \"Instance1\";\n")
-        (insert "  }\n\n")
-
-        (insert "Attribute definition:\n")
-        (insert "  attribute def Region :> String;\n\n")
-
-        (insert "Multi-valued features:\n")
-        (insert "  ref :>> tools = (tool1, tool2, tool3);\n\n")
-
-        (insert "Documentation\n")
-        (insert "-------------\n")
-        (insert "  doc\n")
-        (insert "  /*\n")
-        (insert "   * Documentation comment\n")
-        (insert "   */\n\n")
-
-        (insert "Multiplicity\n")
-        (insert "------------\n")
-        (insert "  [0..1]  - Zero or one\n")
-        (insert "  [1]     - Exactly one\n")
-        (insert "  [0..*]  - Zero or more\n")
-        (insert "  [1..*]  - One or more\n\n")
-
-        (insert "Key Bindings\n")
-        (insert "------------\n")
-        (insert "  C-c C-v  - Validate current file\n")
-        (insert "  C-c C-h  - Show this quick reference\n\n")
-
-        (insert "Authoritative Documentation\n")
-        (insert "---------------------------\n")
-        (insert "OMG SysML v2 Specification:\n")
-        (insert "  https://www.omg.org/spec/SysML/2.0/\n\n")
-        (insert "Normative Example Model:\n")
-        (insert "  https://www.omg.org/cgi-bin/doc?ptc/25-04-31.sysml\n\n")
-        (insert "SysML v2 Release (specifications and examples):\n")
-        (insert "  https://github.com/Systems-Modeling/SysML-v2-Release\n\n"))
-
-      (help-mode)
-      (goto-char (point-min)))
-    (display-buffer buf)))
 
 ;; Spell checking support
 (defun sysml-flyspell-verify ()
@@ -998,7 +1015,6 @@ otherwise returns the base name of the current file."
         (prefix-map (make-sparse-keymap)))
     ;; Core commands
     (define-key map (kbd "C-c C-v") 'sysml-validate-buffer)
-    (define-key map (kbd "C-c C-h") 'sysml-quick-reference)
     (define-key map (kbd "C-c C-s") 'sysml-spell-check-buffer)
 
     ;; Search commands
@@ -1077,36 +1093,15 @@ BUFFER must be a live SysML buffer."
 ;; Mode definition
 ;;;###autoload
 (define-derived-mode sysml-mode prog-mode "SysML"
-  "Major mode for editing SysML v2 (Systems Modeling Language) files.
+  "Major mode for editing SysML v2 files.
 
-Features:
-- Syntax highlighting with optimized compile-time regex compilation
-- ElDoc support showing keyword documentation in minibuffer
-- Imenu support for code navigation (M-x imenu)
-- Which-function-mode support (shows current definition in mode line)
-- Code folding with hideshow mode (C-c @ C-h to hide, C-c @ C-s to show)
-- Electric pairs - automatic insertion of matching delimiters
-- Prettify symbols - display operators with Unicode characters
-- Quick reference guide (C-c C-h)
-- File validation with validate-sysml (C-c C-v)
-- Smart spell checking for comments and strings only (C-c C-s)
-- Improved automatic indentation
+Validation uses `sysml-validator-script' when set. Otherwise, the mode
+looks for `validate-sysml' from the current file's directory upward and
+then on `exec-path'.
 
-Key bindings:
-  C-c C-v    - Validate current file
-  C-c C-h    - Show quick reference guide
-  C-c C-s    - Spell check comments and strings
-  C-c C-c    - Template insertion prefix (followed by letter for template type)
-  C-c @ C-h  - Hide block (code folding)
-  C-c @ C-s  - Show block (code folding)
-  C-c @ C-c  - Toggle hiding
-
-Spell checking:
-  M-x ispell-buffer  - Automatically checks only comments and strings
-  M-x flyspell-prog-mode  - Enable on-the-fly spell checking
-
-ElDoc mode is enabled by default - move cursor over keywords to see
-brief descriptions in the minibuffer.
+Use `sysml-spell-check-buffer' to check comments and strings with
+`ispell-comments-and-strings'. Enable `flyspell-prog-mode' for
+on-the-fly checking.
 
 \\{sysml-mode-map}"
   :syntax-table sysml-mode-syntax-table
@@ -1173,9 +1168,8 @@ brief descriptions in the minibuffer.
   ;; Schedule lazy initialization for heavy features
   (run-with-idle-timer 0.1 nil #'sysml-mode-lazy-init (current-buffer))
 
-  ;; Spell checking configuration
-  ;; flyspell-prog-mode and ispell-comments-and-strings work automatically
-  ;; with our syntax table to check only comments and strings
+  ;; Spell checking configuration for flyspell-prog-mode. Batch spell
+  ;; checking is provided by sysml-spell-check-buffer.
   (setq-local flyspell-generic-check-word-predicate 'sysml-flyspell-verify)
 
   ;; Validation on save
@@ -1184,8 +1178,7 @@ brief descriptions in the minibuffer.
 ;; Auto-load for .sysml files
 ;;;###autoload
 (progn
-  (add-to-list 'auto-mode-alist '("\\.sysml\\'" . sysml-mode))
-  (add-to-list 'auto-mode-alist '("\\.sysmli\\'" . sysml-mode)))  ; Interface files
+  (add-to-list 'auto-mode-alist '("\\.sysml\\'" . sysml-mode)))
 
 (provide 'sysml-mode)
 
