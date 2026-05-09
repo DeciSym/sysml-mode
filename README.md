@@ -1,5 +1,9 @@
 # SysML v2 Mode for Emacs
 
+Copyright (c) 2026 DeciSym, LLC <support@decisym.ai>
+
+See LICENSE file for license information.
+
 Major mode for editing SysML v2 files with syntax highlighting,
 indentation, completion, navigation, comment/string spell checking,
 and optional validation through an external `validate-sysml` command.
@@ -22,6 +26,30 @@ and optional validation through an external `validate-sysml` command.
 - Optional validation after save or on demand with `validate-sysml`.
 
 The mode associates automatically with `.sysml` files.
+
+## Syntax Highlighting Legend
+
+`sysml-mode` colors text by SysML syntactic role, using standard Emacs
+`font-lock` faces. The exact color depends on the active Emacs theme;
+use this legend to interpret what a color means in your theme.
+
+| Face role                   | SysML meaning                                                                           | Examples                                                                     |
+|-----------------------------|-----------------------------------------------------------------------------------------|------------------------------------------------------------------------------|
+| Keyword                     | Language forms, behavior words, relationships, and operators                            | `package`, `import`, `part`, `def`, `perform`, `transition`, `:>`, `::`, `~` |
+| Definition name             | Named packages and named type definitions that navigation commands treat as definitions | `SimpleVehicleModel`, `Vehicle` in `part def Vehicle`                        |
+| Variable/member name        | Local usages, owned features, ports, states, transitions, and parameters                | `mass`, `ignitionCmdPort`, `vehicleStates`, `normal_To_degraded`, `temp`     |
+| Type reference              | Type names in typing positions after `:`                                                | `IgnitionCmdPort`, `Time::DateTime`, `Real`                                  |
+| Builtin/operator word       | Direction and logical words                                                             | `in`, `out`, `inout`, `and`, `or`, `not`                                     |
+| Constant/declaration marker | Declaration helper words, multiplicities, quoted identifiers, numbers, and booleans     | `doc`, `ref`, `[0..*]`, `'quoted name'`, `500`, `true`                       |
+| String                      | Double-quoted string literals                                                           | `"REQ-001"`                                                                  |
+| Comment/doc comment         | `//`, `/* ... */`, and `doc /* ... */` text                                             | `// 2023-02 release`, `doc /* ... */`                                        |
+| Metadata/annotation         | Metadata tags and annotations                                                           | `#logical`, `#physical`, `@Trace`                                            |
+
+The mode intentionally does not treat names such as `String`, `Real`,
+`Boolean`, or `ISQ::mass` as built-in language tokens everywhere they
+appear. In SysML v2 these names come from imported libraries, so they
+are highlighted as type references only when they appear in type
+positions.
 
 ## Installation
 
@@ -117,4 +145,5 @@ emacs -Q --batch -L . -l test/sysml-mode-tests.el -f ert-run-tests-batch-and-exi
 ```
 
 <!-- LocalWords: SysML sysml ElDoc Imenu prettified elisp setq el
- Hideshow keymap ispell flyspell prog emacs ert -->
+ Hideshow keymap ispell flyspell prog emacs ert font lock DateTime
+ IgnitionCmdPort ISQ Trace normal_To_degraded -->

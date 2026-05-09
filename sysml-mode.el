@@ -40,6 +40,68 @@ If nil, auto-detect from buffer's directory."
   :type 'boolean
   :group 'sysml)
 
+(defconst sysml--identifier-regexp "[A-Za-z_][A-Za-z0-9_]*"
+  "Regexp matching an unquoted SysML identifier.")
+
+(defconst sysml--definition-forms
+  '(("Packages" . "package")
+    ("Parts" . "part def")
+    ("Attributes" . "attribute def")
+    ("Items" . "item def")
+    ("Ports" . "port def")
+    ("Actions" . "action def")
+    ("States" . "state def")
+    ("Requirements" . "requirement def")
+    ("Constraints" . "constraint def")
+    ("Connections" . "connection def")
+    ("Interfaces" . "interface def")
+    ("Allocations" . "allocation def")
+    ("Verifications" . "verification def")
+    ("Use Cases" . "use case def")
+    ("Calculations" . "calc def")
+    ("Analyses" . "analysis def")
+    ("Concerns" . "concern def")
+    ("Viewpoints" . "viewpoint def")
+    ("Views" . "view def")
+    ("Metadata" . "metadata def")
+    ("Individuals" . "individual def")
+    ("Enumerations" . "enum def"))
+  "Definition forms recognized by SysML navigation and completion.
+Each element is (MENU-TITLE . FORM), where FORM precedes the
+definition name in SysML text.")
+
+(defconst sysml--usage-keywords
+  '("part" "attribute" "ref" "port" "item" "connection")
+  "SysML usage keywords whose typed declarations define local symbols.")
+
+(defun sysml--definition-form-regexp (form)
+  "Return a regexp matching definition FORM with flexible spacing."
+  (mapconcat #'regexp-quote (split-string form) "\\s-+"))
+
+(defun sysml--definition-forms-regexp ()
+  "Return a regexp matching all recognized SysML definition forms."
+  (mapconcat (lambda (definition)
+               (sysml--definition-form-regexp (cdr definition)))
+             sysml--definition-forms
+             "\\|"))
+
+(defun sysml--any-definition-regexp (&optional symbol)
+  "Return a regexp matching a SysML definition.
+When SYMBOL is non-nil, match only definitions of that symbol.
+Match group 1 is the definition form and group 2 is the definition
+name."
+  (concat "^\\s-*\\(" (sysml--definition-forms-regexp) "\\)\\s-+\\("
+          (if symbol
+              (regexp-quote symbol)
+            sysml--identifier-regexp)
+          "\\)\\_>"))
+
+(defun sysml--definition-form-label (form)
+  "Return a display label for definition FORM."
+  (replace-regexp-in-string
+   "\\s-+def\\'" ""
+   (replace-regexp-in-string "\\s-+" " " form)))
+
 ;; Syntax highlighting
 (defconst sysml-font-lock-keywords
   (eval-when-compile
@@ -288,52 +350,29 @@ continuation lines."
 
 ;; Imenu support for code navigation
 (defconst sysml-imenu-generic-expression
-  '(("Packages" "^\\s-*package\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Parts" "^\\s-*part\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Attributes" "^\\s-*attribute\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Items" "^\\s-*item\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Ports" "^\\s-*port\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Actions" "^\\s-*action\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("States" "^\\s-*state\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Requirements" "^\\s-*requirement\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Constraints" "^\\s-*constraint\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Connections" "^\\s-*connection\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Interfaces" "^\\s-*interface\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Allocations" "^\\s-*allocation\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Use Cases" "^\\s-*use\\s-+case\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Calculations" "^\\s-*calc\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Analyses" "^\\s-*analysis\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Views" "^\\s-*view\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Viewpoints" "^\\s-*viewpoint\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1)
-    ("Enumerations" "^\\s-*enum\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1))
+  (mapcar (lambda (definition)
+            (list (car definition)
+                  (concat "^\\s-*"
+                          (sysml--definition-form-regexp (cdr definition))
+                          "\\s-+\\(" sysml--identifier-regexp "\\)\\_>")
+                  1))
+          sysml--definition-forms)
   "Imenu expressions for SysML mode.
 Provides menu-based navigation to all major definition types.")
 
 ;; Which-function support
 (defun sysml-which-function ()
-  "Return current function name for which-function-mode.
+  "Return current function name for `which-function-mode'.
 Returns the name of the current SysML definition (part, action, state, etc.)."
   (save-excursion
     (let ((case-fold-search nil))
       ;; Search backward for any definition
-      (when (re-search-backward
-             (concat "^\\s-*"
-                     "\\("  ; Group 1: the type
-                     "\\(?:part\\|attribute\\|item\\|port\\|action\\|state\\|"
-                     "requirement\\|constraint\\|connection\\|interface\\|"
-                     "allocation\\|verification\\|use case\\|calc\\|analysis\\|"
-                     "concern\\|viewpoint\\|view\\|metadata\\|enum\\)\\s-+def\\|"
-                     "package"
-                     "\\)"
-                     "\\s-+"
-                     "\\([A-Za-z_][A-Za-z0-9_]*\\)")  ; Group 2: the name
-             nil t)
+      (when (re-search-backward (sysml--any-definition-regexp) nil t)
         (let ((type (match-string 1))
               (name (match-string 2)))
-          ;; Ensure name is not nil before formatting
           (when name
-            (if (and type (string-match "def$" type))
-                (format "%s %s" (replace-regexp-in-string "\\s-+def$" "" type) name)
+            (if (and type (string-match-p "\\s-+def\\'" type))
+                (format "%s %s" (sysml--definition-form-label type) name)
               name)))))))
 
 ;; Electric pairs configuration
@@ -411,7 +450,7 @@ Set to nil to disable prettification."
   :group 'sysml)
 
 (defcustom sysml-enable-prettify-symbols t
-  "Whether to enable prettify-symbols-mode in SysML buffers."
+  "Whether to enable `prettify-symbols-mode' in SysML buffers."
   :type 'boolean
   :group 'sysml)
 
@@ -466,9 +505,10 @@ Prompts to save the buffer if it has unsaved changes."
      ((not (file-executable-p validator-command))
       (error "Validator command is not executable: %s" validator-command))
      (t
-      (let ((default-directory (file-name-directory validator-command)))
+      (let* ((model-file (expand-file-name buffer-file-name))
+             (default-directory (file-name-directory model-file)))
         (compile (mapconcat #'shell-quote-argument
-                            (list validator-command buffer-file-name)
+                            (list validator-command model-file)
                             " ")))))))
 
 (defun sysml-validate-on-save ()
@@ -482,13 +522,6 @@ Prompts to save the buffer if it has unsaved changes."
 
 (defconst sysml--project-source-file-regexp "\\.sysml\\'"
   "Regexp matching SysML source file names.")
-
-(defconst sysml--definition-keywords
-  '("part" "attribute" "item" "port" "action" "state" "requirement"
-    "constraint" "connection" "interface" "allocation" "verification"
-    "calc" "analysis" "concern" "viewpoint" "view" "metadata"
-    "individual" "enum")
-  "SysML declaration keywords that can be followed by `def'.")
 
 (defun sysml--project-root (&optional project)
   "Return the current project root for PROJECT or `default-directory'."
@@ -569,11 +602,7 @@ Each result is a list of FILE, LINE, and LINE-TEXT."
 
 (defun sysml--definition-search-regexp (symbol)
   "Return a regexp that matches a declaration of SYMBOL."
-  (concat "\\_<\\(?:package\\|"
-          (regexp-opt sysml--definition-keywords)
-          "\\s-+def\\)\\s-+"
-          (regexp-quote symbol)
-          "\\_>"))
+  (sysml--any-definition-regexp symbol))
 
 (defun sysml-find-definition-at-point ()
   "Find the definition of the symbol at point across the project.
@@ -603,9 +632,7 @@ Shows packages, parts, attributes, and other definition types."
   (interactive)
   (sysml--display-search-results
    "definitions"
-   (concat "^\\s-*\\(?:package\\|"
-           (regexp-opt sysml--definition-keywords)
-           "\\s-+def\\)\\s-+[A-Za-z_][A-Za-z0-9_]*\\_>")))
+   (sysml--any-definition-regexp)))
 
 ;; Completion support
 
@@ -647,15 +674,17 @@ This is populated when the mode is loaded.")
     (save-excursion
       (goto-char (point-min))
       ;; Find all definitions
+      (while (re-search-forward (sysml--any-definition-regexp) nil t)
+        (let ((match (match-string 2)))
+          (when (and match (not (member match symbols)))
+            (push match symbols))))
+      (goto-char (point-min))
+      ;; Find local typed usages, which are also useful completion symbols.
       (while (re-search-forward
-              (concat "\\(?:"
-                      "package\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)\\|"
-                      "\\(?:part\\|attribute\\|item\\|port\\|action\\|state\\|"
-                      "requirement\\|constraint\\|enum\\)\\s-+def\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)\\|"
-                      "\\(?:part\\|attribute\\|ref\\|port\\|item\\)\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)\\s-*:"
-                      "\\)")
+              (concat "\\_<\\(?:" (regexp-opt sysml--usage-keywords)
+                      "\\)\\s-+\\(" sysml--identifier-regexp "\\)\\s-*:")
               nil t)
-        (let ((match (or (match-string 1) (match-string 2) (match-string 3))))
+        (let ((match (match-string 1)))
           (when (and match (not (member match symbols)))
             (push match symbols)))))
     symbols))
@@ -774,7 +803,7 @@ Only spell-check strings and comments, not code."
 
 (defun sysml-spell-check-buffer ()
   "Spell check comments and strings in SysML buffer.
-This is a SysML-specific wrapper around ispell-comments-and-strings
+This is a SysML-specific wrapper around `ispell-comments-and-strings'
 that ensures only comments and strings are checked, not code."
   (interactive)
   (cond
@@ -782,10 +811,10 @@ that ensures only comments and strings are checked, not code."
    ((not (or (executable-find "ispell")
              (executable-find "aspell")
              (executable-find "hunspell")))
-    (error "No spell checker found. Please install ispell, aspell, or hunspell"))
+    (error "No spell checker found.  Please install ispell, aspell, or hunspell"))
    ;; Then check if the Emacs ispell library is loaded
    ((not (fboundp 'ispell-comments-and-strings))
-    (error "ispell.el is not loaded. Try M-x load-library RET ispell RET"))
+    (error "Ispell.el is not loaded.  Try M-x load-library RET ispell RET"))
    ;; All checks passed, proceed with spell checking
    (t
     (condition-case err
@@ -1095,12 +1124,12 @@ BUFFER must be a live SysML buffer."
 (define-derived-mode sysml-mode prog-mode "SysML"
   "Major mode for editing SysML v2 files.
 
-Validation uses `sysml-validator-script' when set. Otherwise, the mode
+Validation uses `sysml-validator-script' when set.  Otherwise, the mode
 looks for `validate-sysml' from the current file's directory upward and
-then on `exec-path'.
+then on the variable `exec-path'.
 
 Use `sysml-spell-check-buffer' to check comments and strings with
-`ispell-comments-and-strings'. Enable `flyspell-prog-mode' for
+`ispell-comments-and-strings'.  Enable `flyspell-prog-mode' for
 on-the-fly checking.
 
 \\{sysml-mode-map}"

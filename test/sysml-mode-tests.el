@@ -1,12 +1,19 @@
+;;; sysml-mode-tests.el --- Tests for sysml-mode  -*- lexical-binding: t; -*-
+
 (require 'ert)
 (require 'cl-lib)
+(require 'imenu)
 
 (defvar sysml-mode-initialized)
 (defvar sysml-mode-map)
 (defvar sysml-imenu-generic-expression)
 (defvar sysml-mode-electric-pairs)
+(defvar sysml-prettify-symbols-alist)
+(defvar sysml-validate-on-save)
 (defvar sysml-validator-script)
 (defvar sysml--cached-validator)
+(defvar electric-pair-pairs)
+(defvar which-func-functions)
 
 (declare-function sysml-mode "sysml-mode")
 (declare-function sysml-find-validator "sysml-mode" (&optional force-refresh))
@@ -24,8 +31,10 @@
 (declare-function sysml-indent-line "sysml-mode")
 (declare-function sysml-fill-paragraph "sysml-mode" (&optional justify))
 (declare-function sysml-completion-at-point "sysml-mode")
+(declare-function sysml-collect-buffer-symbols "sysml-mode")
 (declare-function sysml-spell-check-buffer "sysml-mode")
 (declare-function sysml-insert-part-def "sysml-mode")
+(declare-function imenu--make-index-alist "imenu" (&optional noerror))
 
 (load-file
  (expand-file-name "../sysml-mode.el"
@@ -69,6 +78,38 @@
   `(should (sysml-mode-tests--face-includes-p
             (sysml-mode-tests--face-at ,text)
             ',face)))
+
+(defconst sysml-mode-tests--all-definition-examples
+  '(("Packages" "Example" "package Example {}")
+    ("Parts" "Vehicle" "part def Vehicle {}")
+    ("Attributes" "Mass" "attribute def Mass :> Real;")
+    ("Items" "Cargo" "item def Cargo {}")
+    ("Ports" "PowerPort" "port def PowerPort {}")
+    ("Actions" "Start" "action def Start {}")
+    ("States" "Operational" "state def Operational {}")
+    ("Requirements" "Performance" "requirement def Performance {}")
+    ("Constraints" "Limit" "constraint def Limit {}")
+    ("Connections" "Link" "connection def Link {}")
+    ("Interfaces" "Bus" "interface def Bus {}")
+    ("Allocations" "Mapping" "allocation def Mapping {}")
+    ("Verifications" "TestCase" "verification def TestCase {}")
+    ("Use Cases" "Mission" "use case def Mission {}")
+    ("Calculations" "Load" "calc def Load {}")
+    ("Analyses" "Trade" "analysis def Trade {}")
+    ("Concerns" "Safety" "concern def Safety {}")
+    ("Viewpoints" "StakeholderViewpoint" "viewpoint def StakeholderViewpoint {}")
+    ("Views" "SystemView" "view def SystemView {}")
+    ("Metadata" "TraceTag" "metadata def TraceTag {}")
+    ("Individuals" "SampleVehicle" "individual def SampleVehicle :> Vehicle;")
+    ("Enumerations" "Region" "enum def Region {}"))
+  "Representative definition forms used by navigation and completion tests.")
+
+(defun sysml-mode-tests--definition-source ()
+  "Return a SysML source string containing all test definition forms."
+  (mapconcat (lambda (definition)
+               (nth 2 definition))
+             sysml-mode-tests--all-definition-examples
+             "\n"))
 
 (ert-deftest sysml-mode-auto-mode-associations ()
   "SysML files should activate sysml-mode."
@@ -124,7 +165,7 @@
             "    attribute label : String = \"hello\";\n"
             "  }\n"
             "}\n")
-    (font-lock-fontify-buffer)
+    (font-lock-ensure)
     (sysml-mode-tests--should-face "package" font-lock-keyword-face)
     (sysml-mode-tests--should-face "Vehicle" font-lock-function-name-face)
     (sysml-mode-tests--should-face "mass" font-lock-variable-name-face)
@@ -152,7 +193,6 @@
 
 (ert-deftest sysml-mode-imenu-and-which-function-find-definitions ()
   "Imenu and which-function support should find SysML definitions."
-  (require 'imenu)
   (with-temp-buffer
     (sysml-mode)
     (cancel-function-timers #'sysml-mode-lazy-init)
@@ -164,6 +204,22 @@
            (packages (cdr (assoc "Packages" index))))
       (should (assoc "Vehicle" parts))
       (should (assoc "Example" packages)))))
+
+(ert-deftest sysml-mode-navigation-handles-all-definition-forms ()
+  "Navigation helpers should share one complete definition grammar."
+  (with-temp-buffer
+    (sysml-mode)
+    (cancel-function-timers #'sysml-mode-lazy-init)
+    (insert (sysml-mode-tests--definition-source))
+    (goto-char (point-min))
+    (search-forward "Mission")
+    (should (equal (sysml-which-function) "use case Mission"))
+    (let ((index (imenu--make-index-alist t)))
+      (dolist (definition sysml-mode-tests--all-definition-examples)
+        (let* ((category (nth 0 definition))
+               (name (nth 1 definition))
+               (matches (cdr (assoc category index))))
+          (should (assoc name matches)))))))
 
 (ert-deftest sysml-mode-finds-project-local-validator ()
   "Validator lookup should prefer validate-sysml in the file tree."
@@ -216,6 +272,26 @@
                      (setq captured-command command))))
           (sysml-validate-buffer))
         (should (equal captured-command expected))))))
+
+(ert-deftest sysml-mode-validation-runs-from-model-directory ()
+  "Validation should run with the model file directory as `default-directory'."
+  (sysml-mode-tests--with-temp-dir root
+    (let* ((validator (sysml-mode-tests--write-executable
+                       (expand-file-name "bin/validate-sysml" root)))
+           (model (sysml-mode-tests--write-file
+                   (expand-file-name "models/example.sysml" root)
+                   "part def Vehicle {}\n"))
+           (sysml-validator-script validator)
+           captured-directory)
+      (with-temp-buffer
+        (setq buffer-file-name model)
+        (set-buffer-modified-p nil)
+        (cl-letf (((symbol-function 'compile)
+                   (lambda (_command &rest _)
+                     (setq captured-directory default-directory))))
+          (sysml-validate-buffer))
+        (should (equal captured-directory
+                       (file-name-directory (expand-file-name model))))))))
 
 (ert-deftest sysml-mode-validation-on-save-obeys-option ()
   "Validation on save should dispatch only when enabled for a file buffer."
@@ -275,6 +351,23 @@
                            (equal match
                                   (list usage 1 "part car : Vehicle {}")))
                          matches))))))
+
+(ert-deftest sysml-mode-project-search-handles-all-definition-forms ()
+  "Project search should find every definition form supported by templates."
+  (sysml-mode-tests--with-temp-dir root
+    (let* ((model (sysml-mode-tests--write-file
+                   (expand-file-name "definitions.sysml" root)
+                   (concat (sysml-mode-tests--definition-source) "\n")))
+           (default-directory root))
+      (dolist (definition sysml-mode-tests--all-definition-examples)
+        (let* ((name (nth 1 definition))
+               (text (nth 2 definition))
+               (matches (sysml--search-files
+                         (sysml--definition-search-regexp name))))
+          (should (member (list model (1+ (cl-position definition
+                                                       sysml-mode-tests--all-definition-examples))
+                                text)
+                          matches)))))))
 
 (ert-deftest sysml-mode-lazy-init-handles-unloaded-hideshow ()
   "Lazy init should load hideshow safely for the intended SysML buffer."
@@ -370,3 +463,17 @@
     (let* ((completion (sysml-completion-at-point))
            (table (nth 2 completion)))
       (should (member "Vehicle" (all-completions "Ve" table))))))
+
+(ert-deftest sysml-mode-completion-collects-all-definition-forms ()
+  "Completion symbol collection should use the shared definition grammar."
+  (with-temp-buffer
+    (sysml-mode)
+    (cancel-function-timers #'sysml-mode-lazy-init)
+    (insert (sysml-mode-tests--definition-source)
+            "\npart vehicleInstance : Vehicle;\n")
+    (let ((symbols (sysml-collect-buffer-symbols)))
+      (dolist (definition sysml-mode-tests--all-definition-examples)
+        (should (member (nth 1 definition) symbols)))
+      (should (member "vehicleInstance" symbols)))))
+
+;;; sysml-mode-tests.el ends here
