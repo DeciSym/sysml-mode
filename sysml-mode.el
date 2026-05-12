@@ -1,5 +1,8 @@
 ;;; sysml-mode.el --- Major mode for SysML v2 (Systems Modeling Language)  -*- lexical-binding: t; -*-
 
+;; Copyright (C) 2026 DeciSym, LLC
+;; SPDX-License-Identifier: ISC
+;;
 ;; Author: Donald Anthony Pellegrino Jr., Ph.D. <don@decisym.ai>
 ;; Assisted-by: GPT:gpt-5-5
 ;; Keywords: languages, modeling, systems engineering
@@ -516,7 +519,7 @@ Prompts to save the buffer if it has unsaved changes."
   "Validate SysML file on save if enabled."
   (when (and sysml-validate-on-save
              buffer-file-name
-             (eq major-mode 'sysml-mode))
+             (derived-mode-p 'sysml-mode))
     (sysml-validate-buffer)))
 
 ;; Project-wide symbol search
@@ -637,10 +640,6 @@ Shows packages, parts, attributes, and other definition types."
 
 ;; Completion support
 
-(defvar sysml-all-keywords nil
-  "List of all SysML keywords for completion.
-This is populated when the mode is loaded.")
-
 (defun sysml-build-keyword-list ()
   "Build the complete list of SysML keywords for completion."
   (append
@@ -666,8 +665,8 @@ This is populated when the mode is loaded.")
      "member" "multiplicity" "ordered" "nonunique" "sequence"
      "alias" "occurrence" "meta" "true" "false")))
 
-;; Initialize the keyword list
-(setq sysml-all-keywords (sysml-build-keyword-list))
+(defconst sysml-all-keywords (sysml-build-keyword-list)
+  "List of all SysML keywords for completion.")
 
 (defun sysml-collect-buffer-symbols ()
   "Collect all defined symbols in the current buffer for completion."
@@ -1156,19 +1155,19 @@ on-the-fly checking.
   (setq-local adaptive-fill-first-line-regexp adaptive-fill-regexp)
 
   ;; Use our fill-paragraph function that only acts in comments
-  (setq-local fill-paragraph-function 'sysml-fill-paragraph)
+  (setq-local fill-paragraph-function #'sysml-fill-paragraph)
 
   ;; Indentation
-  (setq-local indent-line-function 'sysml-indent-line)
+  (setq-local indent-line-function #'sysml-indent-line)
   (setq-local tab-width 4)
 
   ;; ElDoc support for inline documentation
-  (setq-local eldoc-documentation-function 'sysml-eldoc-function)
+  (setq-local eldoc-documentation-function #'sysml-eldoc-function)
   (eldoc-mode 1)
 
   ;; Completion support
   (setq-local completion-at-point-functions
-              (cons 'sysml-completion-at-point
+              (cons #'sysml-completion-at-point
                     completion-at-point-functions))
 
   ;; Imenu support for code navigation
@@ -1176,7 +1175,7 @@ on-the-fly checking.
   (setq-local imenu-case-fold-search nil)  ; Case-sensitive for SysML
 
   ;; Which-function support (shows current definition in mode line)
-  (setq-local which-func-functions '(sysml-which-function))
+  (setq-local which-func-functions (list #'sysml-which-function))
 
   ;; Electric pairs - automatically insert matching delimiters
   (setq-local electric-pair-pairs sysml-mode-electric-pairs)
@@ -1186,13 +1185,13 @@ on-the-fly checking.
   ;; Code folding with hideshow - prepare configuration but delay loading
   (setq-local hs-block-start-regexp "{")
   (setq-local hs-block-end-regexp "}")
-  (setq-local hs-forward-sexp-func 'forward-sexp)
+  (setq-local hs-forward-sexp-func #'forward-sexp)
   (setq-local hs-special-modes-alist
               `((sysml-mode
                  "{"     ; block start
                  "}"     ; block end
                  "/[*/]" ; comment start
-                 forward-sexp
+                 ,#'forward-sexp
                  nil)))  ; no adjust-block-beginning function
 
   ;; Schedule lazy initialization for heavy features
@@ -1200,10 +1199,10 @@ on-the-fly checking.
 
   ;; Spell checking configuration for flyspell-prog-mode. Batch spell
   ;; checking is provided by sysml-spell-check-buffer.
-  (setq-local flyspell-generic-check-word-predicate 'sysml-flyspell-verify)
+  (setq-local flyspell-generic-check-word-predicate #'sysml-flyspell-verify)
 
   ;; Validation on save
-  (add-hook 'after-save-hook 'sysml-validate-on-save nil t))
+  (add-hook 'after-save-hook #'sysml-validate-on-save nil t))
 
 ;; Auto-load for .sysml files
 ;;;###autoload

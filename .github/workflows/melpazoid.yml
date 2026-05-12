@@ -1,0 +1,27 @@
+# melpazoid <https://github.com/riscy/melpazoid> build checks.
+
+name: melpazoid
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v6
+    - name: Set up Python
+      uses: actions/setup-python@v6
+      with: { python-version: '3.10' }
+    - name: Install
+      run: |
+        sudo apt-get install emacs && emacs --version
+        git clone https://github.com/riscy/melpazoid.git ~/melpazoid
+    - name: Run
+      env:
+        LOCAL_REPO: ${{ github.workspace }}
+        # RECIPE is your recipe as written for MELPA:
+        RECIPE: (sysml-mode :fetcher github :repo "DeciSym/sysml-mode")
+        # set this to true if warnings should be treated as errors:
+        WARN_IS_ERROR: false
+        # set this to false (or remove it) if the package isn't on MELPA:
+        EXIST_OK: false
+      run: echo $GITHUB_REF && make -C ~/melpazoid
